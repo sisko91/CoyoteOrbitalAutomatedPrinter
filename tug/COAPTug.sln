@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.6.33829.357
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "COAPTug", "COAPTug.csproj", "{623680FC-C9C6-41BB-9B95-0D1B1FFD62CF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{623680FC-C9C6-41BB-9B95-0D1B1FFD62CF}.Debug|x64.ActiveCfg = Debug|x64
+		{623680FC-C9C6-41BB-9B95-0D1B1FFD62CF}.Debug|x64.Build.0 = Debug|x64
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {47DDEA8D-1995-43E9-AE4F-191C26C06391}
+	EndGlobalSection
+EndGlobal
