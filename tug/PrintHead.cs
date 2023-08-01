@@ -72,6 +72,7 @@ namespace IngameScript {
             SendRemoteArg("Pack");
         }
 
+        //When unpacking, the printer base broadcasts the position and orientation of the print head
         public void Unpack() {
             rotorWeldersOn = false;
             SendRemoteArg("Unpack");

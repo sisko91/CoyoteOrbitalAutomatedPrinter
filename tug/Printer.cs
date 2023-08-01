@@ -14,7 +14,6 @@ namespace IngameScript {
 
         public bool Enabled { get; set; } = false;
 
-        //I'm gonna prooooooont
         public bool Pronting { get; set; } = false;
 
         public bool ProjectionMode { get; private set; } = false;
@@ -43,10 +42,11 @@ namespace IngameScript {
         bool hasUnfinishedBlocks = false;
         DateTime lastUnfinishedBlockTime = DateTime.UtcNow;
 
-        //During playback it's very unlikely, but possible, to miss blocks we got in a previous print. Keep track so we can resume the print properly
+        //During playback it's possible to miss blocks we got in a previous print. Keep track so we can resume the print properly
         int missedBlocks = 0;
 
-        //When the most recent block was placed. The printer waits for a fixed time after no new blocks have been placed, to give armor blocks a chance to fully weld - since their weld status cannot be tracked
+        //When the most recent block was placed
+        //The printer waits for a fixed time after no new blocks have been placed, to give armor blocks a chance to fully weld - since their weld status cannot be tracked
         double lastBlockPlacedTime = 0;
         double prevRemainingBlocks = 0;
 
@@ -130,8 +130,8 @@ namespace IngameScript {
             var rotorRPM = LoadedRecord != null ? LoadedRecord.RotorRPM : 1;
             printHead.SetRotorRPM(rotorRPM);
 
-            //Update tug position if printing
             if (Pronting) {
+                //If the print is done, wait until the tug moves to the completed position, then reset the print
                 while (done) {
                     if (!Move()) {
                         //If done with a playback, reload the record so we can play back again if we start another print
@@ -148,6 +148,7 @@ namespace IngameScript {
                     RenameGrids();
                 }
 
+                //Update tug position if printing
                 int layerNum;
                 if (playback) {
                     layerNum = LoadedRecord.Layers.Where(l => !l.Extended).ToList().Count - layers.Where(l => !l.Extended).ToList().Count;
@@ -172,7 +173,6 @@ namespace IngameScript {
                 Print();
             // If not printing, periodically check the projector to see if something new is loaded
             } else if (!projection.IsShipOnSprue() || LoadedRecord == null) {
-
                 bool newShip = projection.Refresh();
                 if (newShip) {
                     var record = new PrintRecord("ship-" + Utils.RandomString(12), projection.ProjectionHash, 1, new List<Layer>());
@@ -187,9 +187,7 @@ namespace IngameScript {
 
                     LoadRecord(record);
                 }
-            }
-            
-            else { //Periodically save/load config changes
+            } else { //Periodically save/load config changes
                 if (projection.Projector.ProjectionOffset != new Vector3I(50, 50, 50)) { //TODO: needed?
                     Save();
                 }
@@ -206,7 +204,7 @@ namespace IngameScript {
                     layers.Add(new Layer(projection.Remaining(), printHead.PistonsExtended()));
                 }
                 shouldExtend = !printHead.PistonsExtended() && LoadedRecord.BigPrint;
-            } else if (playback) {
+            } else {
                 if (layers.Count > 0) {
                     missedBlocks = projection.Remaining() - layers[0].RemainingBlocks;
                 }
@@ -289,18 +287,15 @@ namespace IngameScript {
                 record.UpdateProjection(projection);
             }
 
-            //TODO: Cleanup
             int remaining = layers.Count > 0 ? layers.Last().RemainingBlocks : projection.Total();
             int savedRemaining = LoadedRecord.Layers.Count > 0 ? LoadedRecord.Layers.Last().RemainingBlocks : projection.Total();
+            //Only save new layers if we're recording and have something new to save
             if (remaining < savedRemaining && !playback) {
                 record.Layers = new List<Layer>(layers);
                 record.CompletionPercentage = 100 - 100 * ((float)projection.Remaining()) / projection.Total();
-            } else {
-                record.CompletionPercentage = LoadedRecord.CompletionPercentage;
             }
 
             LoadRecord(record);
-
             if (!Enabled) {
                 program.Me.CustomData = "";
             }
@@ -318,7 +313,7 @@ namespace IngameScript {
                 Records[LoadedRecord.Name] = LoadedRecord;
             }
 
-            //Using custom data instead of Storage for manual backup and editing. Dont save records with default ship names unless we've started printing them
+            //Using custom data instead of Storage for manual backup and editing
             tug.Cockpit.CustomData = string.Join("---------------------------\n", Records.Values.OrderBy(x => x.Name).Select(r => r.Serialize()).ToList());
         }
 
@@ -433,7 +428,8 @@ namespace IngameScript {
                 }
                 Advance();
 
-                //Remove duplicates at the end of the record
+                //Remove duplicates at the end of the record. There will usually be duplicates at the end when recording
+                //because the printer waits a few layers of no mass changes before considering the print complete
                 while (layers.Count > 1 && layers.Last().RemainingBlocks == layers[layers.Count - 2].RemainingBlocks) {
                     layers.RemoveAt(layers.Count - 1);
                 }

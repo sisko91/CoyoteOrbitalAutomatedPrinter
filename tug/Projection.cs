@@ -28,6 +28,7 @@ namespace IngameScript {
             this.smallprojector = smallProjector;
         }
 
+        //Projection mode allows the user to move and rotate a projection using keyboard controls
         public void ProjectionMode(IMyShipController controller) {
             Vector3 move = controller.MoveIndicator; //left/right, forward/reverse, up/down
             float roll = controller.RollIndicator;
@@ -72,11 +73,9 @@ namespace IngameScript {
             Projector.UpdateOffsetAndRotation();
         }
 
-        //Returns: true if the projection changed
+        //Returns: true if the projection changed and the hash was updated
         public bool Refresh() {
             if (!CanRefresh()) return false;
-
-            //TODO: If a new projection has same total blocks as prev, this won't work
             if (prevTotalBlocks == 0) { prevTotalBlocks = Projector.TotalBlocks; }
 
             var newHash = "";
@@ -99,7 +98,7 @@ namespace IngameScript {
             if (Projector.ProjectionOffset != new Vector3I(50, 50, 50)) {
                 Update(new Vector3I(50, 50, 50), new Vector3I(0, 0, 0));
                 return false;
-                //Projector.RemainingBlocks will not update immediately after the projection is moved. Wait for it to show no welded blocks
+            //Projector.RemainingBlocks will not update immediately after the projection is moved. Wait for it to show no welded blocks
             } else if (Projector.RemainingBlocks != Projector.TotalBlocks) {
                 return false;
             }

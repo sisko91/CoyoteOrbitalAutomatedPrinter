@@ -74,25 +74,27 @@ namespace IngameScript {
             Cockpit.SetValue<bool>("ControlGyros", enable);
         }
 
+        //Only used for projection mode. Disabling thruster control also disables thrust override from working, so the script cant move the tug either
         public void ToggleThrusterControl(bool enable) {
             Cockpit.SetValue<bool>("ControlThrusters", enable);
         }
 
+        //Swap between cockpit and remote control as main controller to disable thruster control during a print
+        //TODO: This doesn't work perfectly - player wont get control back unless they leave the ship and re-enter it (╯°□°)╯︵ ┻━┻
         public void ToggleController(bool enable) {
-            //TODO: This doesn't work perfectly - player wont get control back unless they leave the ship and re-enter it
-            //Cant use the disable thruster control option in the cockpit either, because that prevents thruster override script control from working (╯°□°)╯︵ ┻━┻
-
             //Cockpit.SetValue<bool>("MainCockpit", !enable);
             //RemoteControl.SetValue<bool>("MainCockpit", enable);
             //Cockpit.SetValue<bool>("MainCockpit", !enable);
         }
 
+        //Restore manual player control of gyros, thrusters, and cockpit
         public void Reset(bool hard = false) {
             ResetGyros(hard);
             ResetThrusters(hard);
             ToggleController(false);
         }
 
+        //Returns the position immediately in front of the tug sprue
         //Front connector lines up with the print axis
         public Vector3D GetPosition() {
             //Add fudge so 3x3 large grid blocks like turret dont clip welder plane - they are very finnicky
@@ -104,6 +106,7 @@ namespace IngameScript {
             return Cockpit.WorldMatrix;
         }
 
+        //The sprue with the printed grid is a separate grid attached by a connector
         public IMyCubeGrid GetPrintGrid() {
             IMyShipConnector otherConnector = Connector.OtherConnector;
             if (otherConnector != null) {
@@ -190,10 +193,10 @@ namespace IngameScript {
             if (dist < 0.5) {
                 desiredAcceleration = 0.15;
                 speedLimit = 0.3;
-            } else if (dist < 2) {
+            } else if (dist < 2.5) {
                 desiredAcceleration = 0.5;
                 speedLimit = 1;
-            } else if (dist < 20) {
+            } else if (dist < 2.5 * 10) {
                 desiredAcceleration = 2.5;
                 speedLimit = 2.5;
             } else if (dist < 2.5 * 50) {
@@ -204,11 +207,9 @@ namespace IngameScript {
                 speedLimit = 15;
             }
 
-            double maxBrakingAccel = thrusterDirectionForceMap[axisVelocity < 0 ? posDir : negDir] / totalMass;
             double timeToStop = speed / desiredAcceleration;
             double distToStop = timeToStop * speed / 2;
 
-            //Speed up until full braking would stop the ship just short of the target
             if (dist <= distToStop) {
                 logger.Log("Applying brakes", LogLevel.Debug);
                 speedLimit = -1;
@@ -223,7 +224,7 @@ namespace IngameScript {
             float negDirThrustPercent = axisDistance < 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[negDir]) : 0;
 
             if (speed > speedLimit) {
-                logger.Log($"{axis} speeding - dampening. Speed: {speed}. Limit: {speedLimit}", LogLevel.Debug);
+                logger.Log($"{axis} speeding - braking. Speed: {speed}. Limit: {speedLimit}", LogLevel.Debug);
                 posDirThrustPercent = axisDistance < 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[posDir]) : 0;
                 negDirThrustPercent = axisDistance >= 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[negDir]) : 0;
             }

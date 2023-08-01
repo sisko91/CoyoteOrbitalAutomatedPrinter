@@ -1,7 +1,6 @@
 ﻿using IngameScript.Data;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 using VRage.Game.ModAPI.Ingame.Utilities;
 using VRageMath;
@@ -21,7 +20,7 @@ namespace IngameScript {
         public int ProjectionRotX = 0;
         public int ProjectionRotY = 0;
         public int ProjectionRotZ = 0;
-        public bool BigPrint; //Only used for recording. TODO: Move to general print config? Yes, and add button to toggle it
+        public bool BigPrint;
 
         //Speed up rotor when creative print testing
         public double RotorRPM { get { return !Config.CREATIVE ? _rotorRPM : _rotorRPM * 5; } set { _rotorRPM = value; } }
@@ -38,7 +37,6 @@ namespace IngameScript {
             this.BigPrint = bigPrint;
         }
 
-        //Constructor for storage from custom data
         public PrintRecord(string serialized) {
             MyIniParseResult result;
             if (String.IsNullOrEmpty(serialized)) { throw new Exception("Empty print record config"); }
@@ -65,6 +63,12 @@ namespace IngameScript {
                 RotorRPM = INI.Get("PrintRecord", "RotorRPM").ToDouble();
             } else {
                 RotorRPM = 1;
+            }
+
+            if (INI.ContainsKey("PrintRecord", "BigPrint")) {
+                BigPrint = INI.Get("PrintRecord", "BigPrint").ToBoolean();
+            } else {
+                BigPrint = false;
             }
 
             Layers = new List<Layer>();
@@ -101,6 +105,7 @@ namespace IngameScript {
                 .AppendLine($"Layers={layersStr}")
                 .AppendLine($"PrintCompletion={(CompletionPercentage != Double.NaN ? CompletionPercentage : 0):0.00}")
                 .AppendLine($"RotorRPM={_rotorRPM}")
+                .AppendLine($"BigPrint={BigPrint}")
                 .ToString();
         }
 

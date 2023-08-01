@@ -127,16 +127,16 @@ namespace IngameScript {
 
             if (arg == Config.IGC_CALLBACK) {
                 HandleIGCMessages();
-            } else if (arg == "Toggle") {
+            } else if (arg == "Toggle") { //Turn the printer on and off
                 printer.Enabled = !printer.Enabled;
                 tug.ToggleGyroControl(!printer.Enabled);
                 printer.Reset();
                 if (!printer.Enabled) {
                     Me.CustomData = "";
                 }
-            } else if (arg == "TogglePrintSize") {
+            } else if (arg == "TogglePrintSize") { //Change between printing large and small grids
                 printer.TogglePrintSize();
-            } else if (arg == "Print") {
+            } else if (arg == "Print") { //Start or pause a print
                 if (!printer.Enabled || !printer.Pronting && printer.LoadedRecord == null) { return; }
                 printer.ReloadRecord();
                 printer.Pronting = !printer.Pronting;
@@ -147,7 +147,7 @@ namespace IngameScript {
             } else if (arg == "ToggleProjectionMode") { //Move projection with normal ship controls
                 if (!printer.Enabled) { return; }
                 printer.ToggleProjectionMode();
-            } else if (arg == "Advance") {
+            } else if (arg == "Advance") { //Go to the next layer, use when recording
                 printer.Advance();
             } else if (arg == "ClearData") {
                 printer.LoadedRecord = null;
@@ -161,7 +161,7 @@ namespace IngameScript {
                 printer.LoadedRecord = null;
                 Me.CustomData = "";
                 Save();
-            } else if (arg == "PistonsExtended") {
+            } else if (arg == "PistonsExtended") { //Used by printer base, not for manual use
                 printHead.PState = PrintHead.PistonState.Extended;
             } else if (arg == "PistonsRetracted") {
                 printHead.PState = PrintHead.PistonState.Retracted;
