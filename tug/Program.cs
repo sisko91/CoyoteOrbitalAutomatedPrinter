@@ -95,9 +95,7 @@ namespace IngameScript {
                     DebugAPI.INSTANCE.RemoveDraw();
                 }
 
-                if (update100) {
-                    display.Draw();
-                }
+                display.Draw();
 
                 if (printer.Enabled) {
                     printer.TimeSinceLastRun = elapsed;

@@ -6,7 +6,6 @@ using IngameScript.Logging;
 using SpaceEngineers.Game.ModAPI.Ingame;
 using VRage.Game.ModAPI.Ingame;
 using Sandbox.ModAPI.Interfaces;
-using Sandbox.Game.Entities;
 using IngameScript.Data;
 
 namespace IngameScript {
@@ -216,18 +215,12 @@ namespace IngameScript {
             }
 
             double desiredForce = totalMass * desiredAcceleration;
-            if (speed > speedLimit * 0.9) {
+            if (speed > speedLimit) {
                 desiredForce = 0;
             }
 
             float posDirThrustPercent = axisDistance >= 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[posDir]) : 0;
             float negDirThrustPercent = axisDistance < 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[negDir]) : 0;
-
-            if (speed > speedLimit) {
-                logger.Log($"{axis} speeding - braking. Speed: {speed}. Limit: {speedLimit}", LogLevel.Debug);
-                posDirThrustPercent = axisDistance < 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[posDir]) : 0;
-                negDirThrustPercent = axisDistance >= 0.1 ? Convert.ToSingle(desiredForce / thrusterDirectionForceMap[negDir]) : 0;
-            }
 
             logger.Log($"Desired acceleration: {desiredAcceleration} m/s^2", LogLevel.Debug);
             logger.Log($"{posDir} thrust percent: {100 * posDirThrustPercent:0.00}%", LogLevel.Debug);
