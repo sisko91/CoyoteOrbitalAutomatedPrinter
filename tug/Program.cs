@@ -67,7 +67,7 @@ namespace IngameScript {
             printer.Reset();
 
             var drawingSurface = GridTerminalSystem.GetBlockWithName("Tug LCD") as IMyTextPanel;
-            display = new Display(drawingSurface, printer);
+            display = new Display(drawingSurface, printer, projection);
         }
 
         public void Main(string argument, UpdateType updateSource) {
@@ -147,6 +147,8 @@ namespace IngameScript {
                 printer.ToggleProjectionMode();
             } else if (arg == "Advance") { //Go to the next layer, use when recording
                 printer.Advance();
+            } else if (arg == "RefreshScreen") {
+                display.Clear();
             } else if (arg == "ClearData") {
                 printer.LoadedRecord = null;
                 printer.Records = new Dictionary<string, PrintRecord>();

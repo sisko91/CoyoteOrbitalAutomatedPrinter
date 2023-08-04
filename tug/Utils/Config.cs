@@ -4,7 +4,7 @@
         public static readonly bool CREATIVE = true;
 
         //Enable finer-grained logging and digi draw debug
-        public static readonly bool DEBUG_ENABLED = true;
+        public static readonly bool DEBUG_ENABLED = false;
 
         //The printer will automatically rename the tug grid this
         public static readonly string TUG_NAME = "COAP Tug";

@@ -10,7 +10,7 @@ using VRageMath;
 
 namespace IngameScript {
     internal class Printer {
-        const double LAST_BLOCK_WAIT_SECONDS = 7.5;
+        public const double LAST_BLOCK_WAIT_SECONDS = 7.5;
 
         public bool Enabled { get; set; } = false;
 
@@ -20,12 +20,27 @@ namespace IngameScript {
 
         public double TimeSinceLastRun { get; set; } = 0;
 
+        public bool Aligned { get; private set; } = false;
+
+        public bool ShouldAdvance { get; private set; } = false;
+
+        public bool CheckingProjectionUpdates { get; private set; } = false;
+
         //List of placed blocks that are not fully welded yet. Loaded when print gets stuck due to unwelded blocks (e.g. out of materials)
         public List<string> UnfinishedBlocks { get; private set; } = new List<string>();
+
+        //During playback it's possible to miss blocks we got in a previous print. Keep track so we can resume the print properly
+        public int MissedBlocks { get; private set; } = 0;
 
         //The ship to print and all the data needed to print it
         public PrintRecord LoadedRecord { get; set; }
         public Dictionary<string, PrintRecord> Records { get; set; } = new Dictionary<string, PrintRecord>();
+
+        //Seconds since mass last changed
+        public double NoMassChangeTimer { get; private set; } = 0;
+
+        //Seconds the current layer has been printing
+        public double PrintLayerTimer { get; private set; } = 0;
 
         Tug tug;
         Projection projection;
@@ -42,19 +57,16 @@ namespace IngameScript {
         bool hasUnfinishedBlocks = false;
         DateTime lastUnfinishedBlockTime = DateTime.UtcNow;
 
-        //During playback it's possible to miss blocks we got in a previous print. Keep track so we can resume the print properly
-        int missedBlocks = 0;
-
         //When the most recent block was placed
         //The printer waits for a fixed time after no new blocks have been placed, to give armor blocks a chance to fully weld - since their weld status cannot be tracked
         double lastBlockPlacedTime = 0;
         double prevRemainingBlocks = 0;
 
-        //Seconds the current layer has been printing
-        double layerPrintTimer = 0;
-
         //Seconds moving into position for this layer, used for debugging/optimizing thruster code
         double moveLayerTimer = 0;
+
+        //Keep track of time since last mass change
+        double prevMass = 0;
 
         //Large grid or small grid block length, depending on which is being printed
         double layerSize = 2.5;
@@ -69,9 +81,10 @@ namespace IngameScript {
         List<Layer> layers = new List<Layer>();
 
         //How many layers since the mass has last changed. Used during recording to help detect when a ship is finished printing
-        int noMassChangeCount = 0;
+        int noMassChangeLayerCount = 0;
         double prevLayerMass = 0;
 
+        bool moving = false;
         bool done = false;
 
         public Printer(Tug tug, Projection projection, PrintHead printHead, MyGridProgram program) {
@@ -94,6 +107,7 @@ namespace IngameScript {
 
             if (ProjectionMode) {
                 projection.ProjectionMode(tug.Cockpit);
+                logger.Log("Projection mode");
                 return;
             }
 
@@ -101,7 +115,7 @@ namespace IngameScript {
             logger.Log($"Record loaded?: {LoadedRecord != null}. PHash: {projection.ProjectionHash}");
             logger.Log($"Layers set for print: {(layers == null ? 0 : layers.Count)}");
             logger.Log($"Pronting?: {Pronting}");
-            if (missedBlocks > 0) { logger.Log($"Missed blocks count: {missedBlocks}"); }
+            if (MissedBlocks > 0) { logger.Log($"Missed blocks count: {MissedBlocks}"); }
 
             if (Config.DEBUG_ENABLED) {
                 debug.DrawPoint(printHead.Position, Color.Blue, 1);
@@ -116,9 +130,8 @@ namespace IngameScript {
             }
 
             //Tug will align orientation with print axis before other movement is allowed
-            bool aligned = tug.Align(printHead.Position, printHead.Orientation, printVector);
-            if (!aligned) {
-                tug.ResetThrusters();
+            Aligned = tug.Align(printHead.Position, printHead.Orientation, printVector);
+            if (!Aligned) {
                 return;
             } else if (Config.DEBUG_ENABLED) {
                 //Draw movement vector for tug to align with the print head plane (x, y movement)
@@ -131,6 +144,8 @@ namespace IngameScript {
             printHead.SetRotorRPM(rotorRPM);
 
             if (Pronting) {
+                CheckingProjectionUpdates = false;
+
                 //If the print is done, wait until the tug moves to the completed position, then reset the print
                 while (done) {
                     if (!Move()) {
@@ -158,9 +173,9 @@ namespace IngameScript {
                 tugZPosition = GetPositionForLayer(layerNum);
 
                 //Disable rotors and welders - no printing when anything is moving, mitigates clang fuckery
-                bool moving = Move() || printHead.PistonsMoving();
+                bool movement = Move() || printHead.PistonsMoving();
                 logger.Log($"Moving for {moveLayerTimer:0.00} seconds on this layer", LogLevel.Debug);
-                if (moving) {
+                if (movement) {
                     logger.Log($"Moving... (Pronting={Pronting})");
                     printHead.DisableRotorAndWelders();
                     moveLayerTimer += TimeSinceLastRun;
@@ -170,9 +185,17 @@ namespace IngameScript {
                     printHead.EnableRotorAndWelders();
                 }
 
+                if (prevMass == tug.TotalMass) {
+                    NoMassChangeTimer += TimeSinceLastRun;
+                } else {
+                    NoMassChangeTimer = 0;
+                }
+                prevMass = tug.TotalMass;
+
                 Print();
             // If not printing, periodically check the projector to see if something new is loaded
             } else if (!projection.IsShipOnSprue() || LoadedRecord == null) {
+                CheckingProjectionUpdates = true;
                 bool newShip = projection.Refresh();
                 if (newShip) {
                     var record = new PrintRecord("ship-" + Utils.RandomString(12), projection.ProjectionHash, 1, new List<Layer>());
@@ -187,17 +210,21 @@ namespace IngameScript {
 
                     LoadRecord(record);
                 }
-            } else { //Periodically save/load config changes
+            }
+            
+            if (!Pronting && LoadedRecord != null) { //Periodically save/load config changes
                 if (projection.Projector.ProjectionOffset != new Vector3I(50, 50, 50)) { //TODO: needed?
                     Save();
                 }
-                logger.Log("Ship on sprue with loaded record. Skipping projector updates");
             }
         }
 
         public void Advance() {
             moveLayerTimer = 0;
+            NoMassChangeTimer = 0;
+            ShouldAdvance = false;
             bool shouldExtend = false;
+
             if (!playback) {
                 bool noNewBlocksThisLayer = layers.Count > 0 && layers.Last().RemainingBlocks == projection.Remaining();
                 if (!noNewBlocksThisLayer || !printHead.PistonsExtended()) {
@@ -206,10 +233,10 @@ namespace IngameScript {
                 shouldExtend = !printHead.PistonsExtended() && LoadedRecord.BigPrint;
             } else {
                 if (layers.Count > 0) {
-                    missedBlocks = projection.Remaining() - layers[0].RemainingBlocks;
+                    MissedBlocks = projection.Remaining() - layers[0].RemainingBlocks;
                 }
 
-                while (layers.Count > 0 && layers[0].RemainingBlocks >= projection.Remaining() - missedBlocks) {
+                while (layers.Count > 0 && layers[0].RemainingBlocks >= projection.Remaining() - MissedBlocks) {
                     layers.RemoveAt(0);
                 }
                 shouldExtend = layers.Count == 0 ? false : layers[0].Extended;
@@ -219,13 +246,13 @@ namespace IngameScript {
                 printHead.Extend();
             } else {
                 if (prevLayerMass == tug.TotalMass) {
-                    noMassChangeCount += 1;
+                    noMassChangeLayerCount += 1;
                 }
                 prevLayerMass = tug.TotalMass;
                 printHead.Retract();
             }
 
-            layerPrintTimer = 0;
+            PrintLayerTimer = 0;
             lastBlockPlacedTime = 0;
             Save();
         }
@@ -251,12 +278,20 @@ namespace IngameScript {
 
             Pronting = false;
             ProjectionMode = false;
+            CheckingProjectionUpdates = false;
+            ShouldAdvance = false;
+            PrintLayerTimer = 0;
+            NoMassChangeTimer = 0;
+            noMassChangeLayerCount = 0;
             tugZPosition = 0;
-            noMassChangeCount = 0;
+            moving = false;
+            moveLayerTimer = 0;
+            lastBlockPlacedTime = 0;
+
             tug.ToggleThrusterControl(true);
 
             if (Enabled) {
-                missedBlocks = 0;
+                MissedBlocks = 0;
                 done = false;
                 printVector = Vector3D.Zero;
                 projection.Enable(false);
@@ -292,7 +327,7 @@ namespace IngameScript {
             //Only save new layers if we're recording and have something new to save
             if (remaining < savedRemaining && !playback) {
                 record.Layers = new List<Layer>(layers);
-                record.CompletionPercentage = 100 - 100 * ((float)projection.Remaining()) / projection.Total();
+                record.CompletionPercentage = projection.CompletionPercentage();
             }
 
             LoadRecord(record);
@@ -343,6 +378,73 @@ namespace IngameScript {
             LoadRecord(LoadedRecord);
         }
 
+        //Display helpers (TODO: refactor, make things public that should be public)
+        public bool IsLargeGridPrint() {
+            return layerSize == 2.5;
+        }
+
+        public bool IsRecording() {
+            return !playback;
+        }
+
+        public int CompletedLayers() {
+            return LoadedRecord.Layers.Count - layers.Count;
+        }
+
+        public int CurrentLayer() {
+            if (!playback) {
+                return layers.Count + 1;
+            }
+
+            return LoadedRecord.Layers.Count - layers.Count + 1;
+        }
+
+        public int CurrentLayerTotal() {
+            var prevLayerIndex = CurrentLayer() - 2;
+            var prevLayerRemaining = prevLayerIndex >= 0 ? LoadedRecord.Layers[prevLayerIndex].RemainingBlocks + MissedBlocks: projection.Total();
+
+            return layers.Count > 0 ? prevLayerRemaining - layers[0].RemainingBlocks : prevLayerIndex;
+        }
+
+        public int CurrentLayerRemaining() {
+            return layers.Count > 0 ? projection.Remaining() - layers[0].RemainingBlocks + MissedBlocks: projection.Remaining();
+        }
+
+        public float CurrentLayerCompletionPercentage() {
+            return 100 - 100 * ((float) CurrentLayerRemaining()) / CurrentLayerTotal();
+        }
+
+        public double LayerTimeout() {
+            //2 full revolutions maximum
+            return 2 * 60 / LoadedRecord.RotorRPM;
+        }
+
+        public double MassTimeout() {
+            //Half a revolution
+            return Math.Max(10, 30 / LoadedRecord.RotorRPM);
+        }
+
+        public bool Moving() {
+            return moving && Pronting;
+        }
+
+        public bool PistonsMoving() {
+            return printHead.PistonsMoving();
+        }
+
+        public double ZPosition() {
+            return -tugZPosition;
+        }
+
+        public double TimeSinceLastBlockPlaced() {
+            return PrintLayerTimer - lastBlockPlacedTime;
+        }
+
+        public bool PrintFinished() {
+            var finished = layers.Count == 0 && playback;
+            return finished;
+        }
+
         private bool PrinterPositionKnown() {
             if (printHead.Position != Vector3D.Zero) {
                 printVector = Vector3D.TransformNormal(printHead.Position - tug.GetPosition(), MatrixD.Transpose(tug.GetOrientation()));
@@ -387,7 +489,7 @@ namespace IngameScript {
             bool canRecordMore = projection.Remaining() <= layers.Last().RemainingBlocks && projection.Buildable() > 0;
 
             //Only playback good recordings (>= 90% completion)
-            playback = !canRecordMore && LoadedRecord.CompletionPercentage >= 90;
+            playback = !canRecordMore && LoadedRecord.CompletionPercentage >= 90 || LoadedRecord.CompletionPercentage >= 95; //hack
         }
 
         private bool Move() {
@@ -397,7 +499,7 @@ namespace IngameScript {
                 return false;
             }
 
-            bool moving = tug.MoveZ(printVector.Z - tugZPosition);
+            moving = tug.MoveZ(printVector.Z - tugZPosition);
 
             if (Config.DEBUG_ENABLED && moving) {
                 //Draw tug movement vector towards/away from the print head
@@ -419,14 +521,15 @@ namespace IngameScript {
 
         private void Print() {
             if (!Pronting) { return; }
-            layerPrintTimer += TimeSinceLastRun;
+            PrintLayerTimer += TimeSinceLastRun;
 
-            done = noMassChangeCount >= 3 || projection.Remaining() == 0 || playback && layers.Count == 0;
+            done = noMassChangeLayerCount >= 3 || projection.Remaining() == 0 || playback && layers.Count == 0;
             if (done) {
                 if (HasUnfinishedBlock()) {
                     return;
                 }
                 Advance();
+                printHead.Unpack();
 
                 //Remove duplicates at the end of the record. There will usually be duplicates at the end when recording
                 //because the printer waits a few layers of no mass changes before considering the print complete
@@ -439,25 +542,24 @@ namespace IngameScript {
                 return;
             }
 
-            logger.Log($"Printing. Current layer time: {layerPrintTimer} s");
+            logger.Log($"Printing. Current layer time: {PrintLayerTimer} s");
 
-            double maxLayerWaitSeconds = 2 * 60 / LoadedRecord.RotorRPM; //2 full revolutions maximum
-            bool advance = layerPrintTimer > maxLayerWaitSeconds;
+            ShouldAdvance = PrintLayerTimer > LayerTimeout() || NoMassChangeTimer > MassTimeout();
             if (prevRemainingBlocks != projection.Remaining()) {
-                lastBlockPlacedTime = layerPrintTimer;
+                lastBlockPlacedTime = PrintLayerTimer;
             }
             prevRemainingBlocks = projection.Remaining();
 
             //Wait after last block is placed for armor welding to finish - cant be tracked via script so hardcoded wait
-            bool shouldWait = layerPrintTimer - lastBlockPlacedTime < (Config.CREATIVE ? 0 : LAST_BLOCK_WAIT_SECONDS);
+            bool shouldWait = PrintLayerTimer - lastBlockPlacedTime < (Config.CREATIVE ? 0 : LAST_BLOCK_WAIT_SECONDS);
 
             if (playback && layers.Count > 0) {
-                logger.Log($"Remaining blocks at completion of this layer: {layers[0].RemainingBlocks} (at {projection.Remaining()})", LogLevel.Debug);
-                advance = advance || projection.Remaining() - missedBlocks <= layers[0].RemainingBlocks;
+                logger.Log($"Remaining blocks at completion of this layer: {layers[0].RemainingBlocks + MissedBlocks} (at {projection.Remaining()})", LogLevel.Debug);
+                ShouldAdvance = ShouldAdvance || projection.Remaining() <= layers[0].RemainingBlocks + MissedBlocks;
             }
 
             logger.Log($"Should wait? {shouldWait}", LogLevel.Debug);
-            if (advance && !shouldWait) {
+            if (ShouldAdvance && !shouldWait) {
                 //Expensive, on a fixed refresh delay
                 if (HasUnfinishedBlock()) {
                     logger.Log($"Unfinished blocks: {String.Join(",", UnfinishedBlocks)}", LogLevel.Debug);

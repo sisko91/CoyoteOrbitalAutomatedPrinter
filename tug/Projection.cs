@@ -168,6 +168,10 @@ namespace IngameScript {
             return Projector.TotalBlocks;
         }
 
+        public float CompletionPercentage() {
+            return 100 - 100 * ((float) Remaining()) / Total();
+        }
+
         public int Buildable() {
             return Projector.BuildableBlocksCount;
         }
