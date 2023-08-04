@@ -125,8 +125,11 @@ namespace IngameScript {
             double alignedDist = 0.1;
             double alignedMoveDist = 0.1;
 
+            bool facingTarget = false;
+
             //Once we get aligned close enough, start moving in X/Y plane to align with printer head
             if (Math.Abs(pitch) < alignedDist && Math.Abs(yaw) < alignedDist && Math.Abs(roll) < alignedDist) {
+                facingTarget = true;
                 logger.Log($"Position:\n X:{printVector.X:0.00} Y:{printVector.Y:0.00} Z:{-1 * (printVector.Z):0.00}");
 
                 bool inXPos = Math.Abs(printVector.X) < alignedMoveDist;
@@ -136,15 +139,15 @@ namespace IngameScript {
                     ResetThrusters();
                 } else {
                     logger.Log("Moving into position");
-                    Move(printVector.X, !inXPos ? Velocity.X : 0, "X", TotalMass);
-                    Move(printVector.Y, !inYPos ? Velocity.Y : 0, "Y", TotalMass);
-                    return true;
+                    Move(printVector.X, Velocity.X, "X", TotalMass);
+                    Move(printVector.Y, Velocity.Y, "Y", TotalMass);
+                    return false;
                 }
             }
 
-            bool moving = Velocity.X < 0.1 && Velocity.Y < 0.1;
-            if (moving) { logger.Log("In position, ready to print"); }
-            return moving;
+            bool moving = Velocity.X > 0.1 || Velocity.Y > 0.1;
+            if (!moving) { logger.Log("In position, ready to print"); }
+            return !moving && facingTarget;
         }
 
         public bool MoveZ(double distance) {
@@ -195,6 +198,9 @@ namespace IngameScript {
             } else if (dist < 2.5) {
                 desiredAcceleration = 0.5;
                 speedLimit = 1;
+            } else if (dist < 2.5 * 5) {
+                desiredAcceleration = 0.75;
+                speedLimit = 1.5;
             } else if (dist < 2.5 * 10) {
                 desiredAcceleration = 2.5;
                 speedLimit = 2.5;
@@ -216,6 +222,7 @@ namespace IngameScript {
 
             double desiredForce = totalMass * desiredAcceleration;
             if (speed > speedLimit) {
+                logger.Log("Speeding", LogLevel.Debug);
                 desiredForce = 0;
             }
 
